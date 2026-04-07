@@ -1,0 +1,177 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>游泳成績助手</title>
+  <link rel="manifest" href="/static/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/icons/icon-192.png">
+  <style>
+    :root { --bg:#f6f7fb; --card:#fff; --text:#1f2937; --muted:#6b7280; --line:#e5e7eb; --accent:#0ea5e9; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; background:var(--bg); color:var(--text); }
+    .wrap { max-width:760px; margin:0 auto; padding:16px 14px 32px; }
+    .header { position:sticky; top:0; background:rgba(246,247,251,.92); backdrop-filter:blur(10px); padding:12px 0; z-index:9; }
+    h1 { margin:0 0 4px; font-size:24px; }
+    .sub { color:var(--muted); font-size:14px; }
+    .card { background:var(--card); border-radius:18px; padding:14px; box-shadow:0 6px 20px rgba(0,0,0,.06); margin-top:12px; }
+    .grid { display:grid; gap:10px; }
+    input, select, button { width:100%; font-size:16px; border-radius:12px; border:1px solid var(--line); padding:12px; }
+    button { background:var(--accent); color:#fff; border:none; font-weight:600; }
+    button.secondary { background:#fff; color:var(--text); border:1px solid var(--line); }
+    .row { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .list { display:grid; gap:10px; }
+    .item { border:1px solid var(--line); border-radius:14px; padding:12px; }
+    .title { font-weight:700; }
+    .meta { color:var(--muted); font-size:13px; margin-top:4px; }
+    .badge { display:inline-block; padding:4px 8px; border-radius:999px; font-size:12px; background:#e0f2fe; color:#0369a1; margin-left:6px; }
+    .small { color:var(--muted); font-size:13px; }
+    .empty { color:var(--muted); text-align:center; padding:20px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="header">
+      <h1>游泳成績助手</h1>
+      <div class="sub">iPhone 版手機介面，可加入主畫面使用</div>
+    </div>
+
+    <div class="card">
+      <div class="title">1. 新增選手</div>
+      <div class="grid" style="margin-top:10px;">
+        <input id="name" placeholder="選手姓名">
+        <div class="row">
+          <select id="gender">
+            <option value="">性別</option>
+            <option>女</option>
+            <option>男</option>
+          </select>
+          <input id="birthYear" type="number" placeholder="出生年">
+        </div>
+        <button onclick="addSwimmer()">新增選手</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="title">2. 從成績網址匯入</div>
+      <div class="grid" style="margin-top:10px;">
+        <select id="importSwimmer"></select>
+        <input id="importUrl" placeholder="貼上成績頁網址">
+        <button onclick="importFromUrl()">自動抓成績</button>
+        <div class="small">適合先貼公開成績頁、決賽總表、單位成績頁測試。</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="title">3. 手動新增成績</div>
+      <div class="grid" style="margin-top:10px;">
+        <select id="manualSwimmer"></select>
+        <input id="meetName" placeholder="賽事名稱">
+        <input id="eventName" placeholder="項目，例如 50M 自由式">
+        <div class="row">
+          <input id="timeText" placeholder="成績，例如 31.45 或 1:05.20">
+          <input id="rankText" placeholder="名次，例如 3">
+        </div>
+        <div class="row">
+          <input id="meetDate" placeholder="日期，例如 2026-04-07">
+          <input id="course" placeholder="短水道 / 長水道">
+        </div>
+        <button onclick="addResult()">儲存成績</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="title">選手清單</div>
+      <div id="swimmerList" class="list" style="margin-top:10px;"></div>
+    </div>
+
+    <div class="card">
+      <div class="title">全部成績</div>
+      <div id="resultsList" class="list" style="margin-top:10px;"></div>
+    </div>
+  </div>
+
+<script>
+const initialSwimmers = {{ swimmers|tojson }};
+const initialResults = {{ results|tojson }};
+
+function renderSwimmers(swimmers){
+  const list = document.getElementById('swimmerList');
+  const selects = [document.getElementById('importSwimmer'), document.getElementById('manualSwimmer')];
+  list.innerHTML = swimmers.length ? '' : '<div class="empty">還沒有選手</div>';
+  selects.forEach(sel => sel.innerHTML = '<option value="">請選擇選手</option>');
+  swimmers.forEach(s => {
+    const div = document.createElement('div');
+    div.className = 'item';
+    div.innerHTML = `<div class="title">${s.name}</div><div class="meta">${s.gender || ''} ${s.birth_year || ''}</div>`;
+    list.appendChild(div);
+    selects.forEach(sel => sel.innerHTML += `<option value="${s.id}">${s.name}</option>`);
+  });
+}
+
+function renderResults(results){
+  const list = document.getElementById('resultsList');
+  list.innerHTML = results.length ? '' : '<div class="empty">還沒有成績</div>';
+  results.forEach(r => {
+    const div = document.createElement('div');
+    div.className = 'item';
+    div.innerHTML = `
+      <div class="title">${r.swimmer_name}｜${r.event_name || '未填項目'} ${r.is_pb ? '<span class="badge">PB</span>' : ''}</div>
+      <div class="meta">${r.meet_name || ''}</div>
+      <div class="meta">成績 ${r.time_text || ''}　名次 ${r.rank_text || '-'}　${r.course || ''}</div>
+      <div class="meta">${r.meet_date || ''}</div>`;
+    list.appendChild(div);
+  });
+}
+
+async function refreshAll(){
+  const swimmers = await fetch('/api/swimmers').then(r => r.json());
+  renderSwimmers(swimmers);
+  location.reload();
+}
+
+async function addSwimmer(){
+  const payload = {
+    name: document.getElementById('name').value,
+    gender: document.getElementById('gender').value,
+    birth_year: document.getElementById('birthYear').value || null
+  };
+  await fetch('/api/swimmers', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+  await refreshAll();
+}
+
+async function addResult(){
+  const payload = {
+    swimmer_id: Number(document.getElementById('manualSwimmer').value),
+    meet_name: document.getElementById('meetName').value,
+    event_name: document.getElementById('eventName').value,
+    time_text: document.getElementById('timeText').value,
+    rank_text: document.getElementById('rankText').value,
+    meet_date: document.getElementById('meetDate').value,
+    course: document.getElementById('course').value,
+    source_url: ''
+  };
+  await fetch('/api/results', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)});
+  await refreshAll();
+}
+
+async function importFromUrl(){
+  const payload = {
+    swimmer_id: Number(document.getElementById('importSwimmer').value),
+    url: document.getElementById('importUrl').value,
+  };
+  const res = await fetch('/api/import-url', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(payload)}).then(r => r.json());
+  alert(`已匯入 ${res.imported_count} 筆`);
+  await refreshAll();
+}
+
+renderSwimmers(initialSwimmers);
+renderResults(initialResults);
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/static/sw.js');
+}
+</script>
+</body>
+</html>
