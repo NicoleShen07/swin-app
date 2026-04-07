@@ -48,7 +48,8 @@ def import_url():
     data = request.get_json(force=True)
     swimmer_id = data['swimmer_id']
     url = data['url']
-    imported = fetch_results_from_url(url)
+    swimmer_name = data.get('swimmer_name', '').strip()
+    imported = fetch_results_from_url(url, swimmer_name=swimmer_name)
     count = 0
     for item in imported:
         add_result(
@@ -63,7 +64,10 @@ def import_url():
         )
         count += 1
     update_pb_cache(swimmer_id)
-    return jsonify({'ok': True, 'imported_count': count, 'rows': imported})
+    message = f'已匯入 {count} 筆'
+    if count == 0:
+        message = '這個網址目前沒有抓到該選手成績。請改貼「該賽會的成績頁 / 單位成績查詢結果頁 / 決賽總表頁」，並確認上方選的是同一位選手。'
+    return jsonify({'ok': True, 'imported_count': count, 'rows': imported, 'message': message})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000, debug=True)
